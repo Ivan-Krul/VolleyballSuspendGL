@@ -1,12 +1,148 @@
 ﻿#include <windows.h>
 #include <gl/gl.h>
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 #pragma comment(lib, "opengl32.lib")
+
+#define WINDOW_X 1200
+#define WINDOW_Y 700
+#define WINDOW_RELATION (float(WINDOW_X)/float(WINDOW_Y))
+
+#define GAME_GRAVITY_BALL 0.002f
+#define GAME_NET_HEIGTH -0.2f
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
 void EnableOpenGL(HWND hwnd, HDC*, HGLRC*);
 void DisableOpenGL(HWND, HDC, HGLRC);
 
+struct TBall {
+	float x;
+	float y;
+	float dx;
+	float dy;
+	float r;
+
+	void Init(float x, float y, float dx, float dy, float r) {
+		this->x = x;
+		this->y = y;
+		this->dx = dx;
+		this->dy = dy;
+		this->r = r;
+	}
+};
+
+TBall ball;
+TBall player[2];
+
+bool isCross(float x1, float y1, float r, float x2, float y2) {
+	return pow(x1 - x2, 2) + pow(y1 - y2, 2) < r * r;
+}
+
+void Mirror(TBall& tball, float x, float y) {
+	float tballVec = atan2(tball.dx, tball.dy);
+	float crossVec = atan2(tball.x-x, tball.y-y);
+
+	float resVec = M_PI - tballVec + crossVec * 2;
+	float speed = sqrt(pow(tball.dx, 2) + pow(tball.dy, 2));
+
+	tball.dx = sin(resVec) * speed;
+	tball.dy = cos(resVec) * speed;
+}
+
+void Reflect(float& da, float& a, bool cond, float wall) {
+	if (!cond) return;
+	da *= -0.85f;
+	a = wall;
+}
+
+void TBallMove(TBall& tball) {
+	tball.x += tball.dx;
+	tball.y += tball.dy;
+
+	Reflect(tball.dy, tball.y, (tball.y < tball.r - 1), tball.r - 1);
+	Reflect(tball.dy, tball.y, (tball.y > 1 - tball.r), 1 - tball.r);
+	tball.dy -= GAME_GRAVITY_BALL;
+
+	Reflect(tball.dx, tball.x, (tball.x < tball.r - WINDOW_RELATION), tball.r - WINDOW_RELATION);
+	Reflect(tball.dx, tball.x, (tball.x > WINDOW_RELATION - tball.r), WINDOW_RELATION - tball.r);
+
+	if (tball.y < GAME_NET_HEIGTH) {
+		if(tball.x>0)
+			Reflect(tball.dx, tball.x, (tball.x < +tball.r), +tball.r);
+		else
+			Reflect(tball.dx, tball.x, (tball.x > -tball.r), -tball.r);
+	}
+	else {
+		if (isCross(tball.x, tball.y, tball.r, 0, GAME_NET_HEIGTH))
+			Mirror(tball, 0, GAME_NET_HEIGTH);
+	}
+}
+
+void GameInit() {
+	ball.Init(0.1f,0.5f,0.0f,0.0f,0.2f);
+	player[0].Init(1, 0, 0.0f, 0.0f, 0.2f);
+	player[1].Init(-1, 0, 0.0f, 0.0f, 0.2f);
+}
+
+void DrawCircle(int poly) {
+	float a = 2.0f * M_PI / float(poly);
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex2f(0,0);
+	for (int i = 0;i <= poly;i++) {
+		float x = cos(i * a);
+		float y = sin(i * a);
+		glVertex2f(x,y);
+	}
+
+	glEnd();
+}
+
+void DrawTBall(TBall tball) {
+	glPushMatrix();
+	glTranslatef(tball.x, tball.y,0.0f);
+	glScalef(tball.r, tball.r,0.0f);
+
+	DrawCircle(20);
+
+	glPopMatrix();
+}
+
+void DrawSquare(float x,float y,float dx,float dy) {
+	glBegin(GL_TRIANGLE_FAN);
+
+	glVertex2f(x, y);
+	glVertex2f(x + dx, y);
+	glVertex2f(x + dx, y + dy);
+	glVertex2f(x, y + dy);
+
+	glEnd();
+}
+
+void DrawBG() {
+	glColor3ub(69, 197, 230);
+	DrawSquare(-WINDOW_RELATION,0.0f,WINDOW_RELATION*2.0f,1.0f);
+	glColor3ub(23, 29, 209);
+	DrawSquare(-WINDOW_RELATION, -0.4f,WINDOW_RELATION * 2.0f, 0.4f);
+	glColor3ub(214, 203, 101);
+	DrawSquare(-WINDOW_RELATION, -1.0f,WINDOW_RELATION*2.0f, 0.6f);
+}
+
+void Paint() {
+	DrawBG();
+
+	glColor3ub(75, 103, 163);
+	DrawTBall(ball);
+
+	glColor3ub(21, 207, 89);
+	DrawTBall(player[0]);
+
+	glColor3ub(109, 22, 222);
+	DrawTBall(player[1]);
+
+	glColor3ub(79, 19, 54);
+	DrawSquare(-0.01, GAME_NET_HEIGTH, 0.02, -(1 - GAME_NET_HEIGTH));
+}
 
 int WINAPI WinMain(HINSTANCE hInstance,
 	HINSTANCE hPrevInstance,
@@ -46,8 +182,8 @@ int WINAPI WinMain(HINSTANCE hInstance,
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
-		256,
-		256,
+		WINDOW_X,
+		WINDOW_Y,
 		NULL,
 		NULL,
 		hInstance,
@@ -57,6 +193,9 @@ int WINAPI WinMain(HINSTANCE hInstance,
 
 	/* enable OpenGL for the window */
 	EnableOpenGL(hwnd, &hDC, &hRC);
+
+	glScalef(1.0/WINDOW_RELATION, 1.0f, 0.0f);
+	GameInit();
 
 	/* program main loop */
 	while (!bQuit)
@@ -82,18 +221,9 @@ int WINAPI WinMain(HINSTANCE hInstance,
 			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			glPushMatrix();
-			glRotatef(theta, 0.0f, 0.0f, 1.0f);
+			TBallMove(ball);
 
-			glBegin(GL_TRIANGLES);
-
-			glColor3f(1.0f, 0.0f, 0.0f);   glVertex2f(0.0f, 1.0f);
-			glColor3f(0.0f, 1.0f, 0.0f);   glVertex2f(0.87f, -0.5f);
-			glColor3f(0.0f, 0.0f, 1.0f);   glVertex2f(-0.87f, -0.5f);
-
-			glEnd();
-
-			glPopMatrix();
+			Paint();
 
 			SwapBuffers(hDC);
 
