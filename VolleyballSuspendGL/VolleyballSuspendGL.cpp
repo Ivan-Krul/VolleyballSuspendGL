@@ -2,6 +2,7 @@
 #include <gl/gl.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <string>
 
 #pragma comment(lib, "opengl32.lib")
 
@@ -10,7 +11,9 @@
 #define WINDOW_RELATION (float(WINDOW_X)/float(WINDOW_Y))
 
 #define GAME_GRAVITY_BALL 0.002f
+#define GAME_GRAVITY_PLAYER 0.004f
 #define GAME_NET_HEIGTH -0.2f
+#define GAME_BALL_BOUNCINESS 0.07f
 
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
 void EnableOpenGL(HWND hwnd, HDC*, HGLRC*);
@@ -34,26 +37,51 @@ struct TBall {
 
 TBall ball;
 TBall player[2];
+COORD check = { 0,0 };
 
 bool isCross(float x1, float y1, float r, float x2, float y2) {
 	return pow(x1 - x2, 2) + pow(y1 - y2, 2) < r * r;
 }
 
-void Mirror(TBall& tball, float x, float y) {
+void Mirror(TBall& tball, float x, float y,float speed) {
 	float tballVec = atan2(tball.dx, tball.dy);
 	float crossVec = atan2(tball.x-x, tball.y-y);
 
-	float resVec = M_PI - tballVec + crossVec * 2;
-	float speed = sqrt(pow(tball.dx, 2) + pow(tball.dy, 2));
+	float resVec = speed==0 ? M_PI - tballVec + crossVec * 2.0f:crossVec;
+	float Speed = speed == 0 ? sqrt(pow(tball.dx, 2) + pow(tball.dy, 2)) : speed;
 
-	tball.dx = sin(resVec) * speed;
-	tball.dy = cos(resVec) * speed;
+	tball.dx = sin(resVec) * Speed;
+	tball.dy = cos(resVec) * Speed;
 }
 
 void Reflect(float& da, float& a, bool cond, float wall) {
 	if (!cond) return;
 	da *= -0.85f;
 	a = wall;
+}
+
+void PlayerMove(TBall& player, char left, char rigth, char jump, float wl1, float wl2) {
+	static float speed = 0.05f;
+
+	if (GetAsyncKeyState(left)) player.x -= speed;
+	else if (GetAsyncKeyState(rigth)) player.x += speed;
+
+	if (player.x - player.r < wl1) player.x = wl1 + player.r;
+	if (player.x + player.r > wl2) player.x = wl2 - player.r;
+
+	if (GetAsyncKeyState(jump) && (player.y < -0.99f + player.r))
+		player.dy = speed * 1.4f;
+	player.y += player.dy;
+	player.dy -= GAME_GRAVITY_PLAYER;
+	if (player.y - player.r < -1) {
+		player.dy = 0;
+		player.y = -1 + player.r;
+	}
+
+	if (isCross(player.x, player.y, player.r + ball.r, ball.x, ball.y)) {
+		Mirror(ball, player.x, player.y, GAME_BALL_BOUNCINESS);
+		ball.dy += 0.01f;
+	}
 }
 
 void TBallMove(TBall& tball) {
@@ -75,14 +103,35 @@ void TBallMove(TBall& tball) {
 	}
 	else {
 		if (isCross(tball.x, tball.y, tball.r, 0, GAME_NET_HEIGTH))
-			Mirror(tball, 0, GAME_NET_HEIGTH);
+			Mirror(tball, 0, GAME_NET_HEIGTH,0);
 	}
 }
 
 void GameInit() {
 	ball.Init(0.1f,0.5f,0.0f,0.0f,0.2f);
-	player[0].Init(1, 0, 0.0f, 0.0f, 0.2f);
-	player[1].Init(-1, 0, 0.0f, 0.0f, 0.2f);
+	player[0].Init(-1, 0, 0.0f, 0.0f, 0.2f);
+	player[1].Init(1, 0, 0.0f, 0.0f, 0.2f);
+}
+
+bool IsWork() {
+	return !(ball.y - ball.r < -0.95);
+}
+
+void line(double x1, double y1, double x2, double y2) { glVertex2f(x1, y1);glVertex2f(x2, y2); }
+
+void ShowNumber(int num) {
+
+	glLineWidth(3);
+	glBegin(GL_LINES);
+	glColor3f(1.0f, 0.0f, 0.0f);
+	if (num == '0' || num == '4' || num == '5' || num == '6' || num == '8' || num == '9' || num == 'L' || num == 'V' ) line(0.15, 0.85, 0.15, 0.5);
+	if (num == '0' || num == '2' || num == '6' || num == '8' || num == 'L') line(0.15, 0.5, 0.15, 0.15);
+	if (num == '0' || num == '2' || num == '3' || num == '5' || num == '6' || num == '7' || num == '8' || num == '9') line(0.15, 0.85, 0.85, 0.85);
+	if (num == '2' || num == '3' || num == '4' || num == '5' || num == '6' || num == '8' || num == '9' || num == ':') line(0.15, 0.5, 0.85, 0.5);
+	if (num == '0' || num == '2' || num == '3' || num == '5' || num == '6' || num == '8' || num == '9' || num == 'L' || num == 'V' || num == ':') line(0.15, 0.15, 0.85, 0.15);
+	if (num == '0' || num == '1' || num == '2' ||  num == '3' || num == '4' || num == '7' || num == '8' || num == '9' || num == 'V') line(0.85, 0.5, 0.85, 0.85);
+	if (num == '0' || num == '1' || num == '3' || num == '4' || num == '5' || num == '6' || num == '7' || num == '8' || num == '9' || num == 'V') line(0.85, 0.5, 0.85, 0.15);
+	glEnd();
 }
 
 void DrawCircle(int poly) {
@@ -142,6 +191,16 @@ void Paint() {
 
 	glColor3ub(79, 19, 54);
 	DrawSquare(-0.01, GAME_NET_HEIGTH, 0.02, -(1 - GAME_NET_HEIGTH));
+
+	std::string str = std::to_string(check.X) + ':' + std::to_string(check.Y);
+	for (int i=0;i<str.size();i++) {
+		glPushMatrix();
+		glTranslatef(0 - (i * 0.1), 0.8f, 0.0f);
+		glScalef(0.1f, 0.2f, 0.0f);
+		ShowNumber(str[i]);
+		glEnd();
+		glPopMatrix();
+	}
 }
 
 int WINAPI WinMain(HINSTANCE hInstance,
@@ -178,7 +237,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
 	/* create main window */
 	hwnd = CreateWindowEx(0,
 		L"GLSample",
-		L"OpenGL Sample",
+		L"VolleyballSuspendGL",
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
@@ -218,11 +277,25 @@ int WINAPI WinMain(HINSTANCE hInstance,
 		{
 			/* OpenGL animation code goes here */
 
+			if (GetAsyncKeyState(VK_F4)) { GameInit(); check = { 0,0 }; Sleep(500); }
+
 			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			TBallMove(ball);
 
+			if (IsWork()) {
+				TBallMove(ball);
+				PlayerMove(player[0], 'A', 'D', 'W', -WINDOW_RELATION, 0);
+				PlayerMove(player[1], VK_LEFT, VK_RIGHT, VK_UP, 0, WINDOW_RELATION);
+			}
+			else {
+				if (ball.x < 0.0f) check.X++;
+				else check.Y++;
+
+				GameInit();
+
+				Sleep(1000);
+			}
 			Paint();
 
 			SwapBuffers(hDC);
